@@ -9,7 +9,15 @@
         "rekognition:ListFaces",
         "rekognition:DeleteFaces"
       ],
-      "Resource": "arn:aws:rekognition:us-east-2:*:collection/rostros-udv"
+      "Resource": "arn:aws:rekognition:us-east-1:*:collection/rostros-udv"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "rekognition:CreateFaceLivenessSession",
+        "rekognition:GetFaceLivenessSessionResults"
+      ],
+      "Resource": "*"
     }
   ]
 }

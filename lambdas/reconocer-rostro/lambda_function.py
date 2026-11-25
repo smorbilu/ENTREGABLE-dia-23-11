@@ -1,12 +1,15 @@
 import base64
 import json
 import os
+import re
 
 import boto3
 
 rekognition = boto3.client("rekognition")
 COLLECTION_ID = os.environ.get("COLLECTION_ID", "rostros-udv")
 SIMILITUD_MINIMA = float(os.environ.get("SIMILITUD_MINIMA", "85"))
+CONFIANZA_MINIMA = float(os.environ.get("LIVENESS_MIN_CONFIDENCE", "80"))
+SESION_VALIDA = re.compile(r"^[0-9a-fA-F-]{36}$")
 
 
 def responder(status, cuerpo):
@@ -27,49 +30,48 @@ def leer_cuerpo(event):
     return datos
 
 
-def leer_imagen(texto):
-    texto = texto.strip()
-    if texto.startswith("data:") and "," in texto:
-        texto = texto.split(",", 1)[1]
-    return base64.b64decode("".join(texto.split()), validate=True)
-
-
 def lambda_handler(event, context):
     try:
         datos = leer_cuerpo(event)
     except ValueError:
         return responder(400, {"error": "El cuerpo debe ser un JSON válido"})
 
-    imagen = datos.get("image")
-    if not isinstance(imagen, str) or not imagen:
-        return responder(400, {"error": "El campo image es obligatorio (foto en base64)"})
+    session_id = str(datos.get("sessionId", "")).strip()
+    if not SESION_VALIDA.match(session_id):
+        return responder(400, {"error": "El campo sessionId es obligatorio (lo devuelve POST /sesion)"})
 
     try:
-        imagen_bytes = leer_imagen(imagen)
-    except ValueError:
-        return responder(400, {"error": "El campo image no es un base64 válido"})
+        sesion = rekognition.get_face_liveness_session_results(SessionId=session_id)
+    except rekognition.exceptions.SessionNotFoundException:
+        return responder(404, {"error": "La sesión no existe o ya expiró"})
+
+    estado = sesion["Status"]
+    confianza = sesion.get("Confidence", 0.0)
+    if estado != "SUCCEEDED" or confianza < CONFIANZA_MINIMA:
+        return responder(200, {"vivo": False, "estado": estado, "confianza": confianza, "match": False})
+
+    imagen = (sesion.get("ReferenceImage") or {}).get("Bytes")
+    if not imagen:
+        return responder(500, {"error": "La sesión no trae imagen de referencia"})
 
     try:
         resultado = rekognition.search_faces_by_image(
             CollectionId=COLLECTION_ID,
-            Image={"Bytes": imagen_bytes},
+            Image={"Bytes": imagen},
             FaceMatchThreshold=SIMILITUD_MINIMA,
             MaxFaces=1,
         )
     except rekognition.exceptions.InvalidParameterException:
         return responder(400, {"error": "No se detectó un rostro en la imagen"})
-    except (
-        rekognition.exceptions.InvalidImageFormatException,
-        rekognition.exceptions.ImageTooLargeException,
-    ):
-        return responder(400, {"error": "La imagen no es válida (debe ser JPG o PNG de menos de 5 MB)"})
 
+    vivo = {"vivo": True, "estado": estado, "confianza": confianza}
     coincidencias = resultado["FaceMatches"]
     if not coincidencias:
-        return responder(200, {"match": False})
+        return responder(200, {**vivo, "match": False})
 
     mejor = coincidencias[0]
     return responder(200, {
+        **vivo,
         "match": True,
         "id": mejor["Face"]["ExternalImageId"],
         "similarity": mejor["Similarity"],

@@ -11,50 +11,78 @@
     </ion-toolbar>
   </ion-header>
 
-  <p class="ayuda">Toma una foto de la persona y la app buscará si su rostro ya está registrado.</p>
+  @if (sesion(); as sessionId) {
+    <app-deteccion-vida
+      [sessionId]="sessionId"
+      (completado)="alCompletar()"
+      (cancelado)="alCancelar()"
+      (fallo)="alFallar($event)"
+    ></app-deteccion-vida>
+    <ion-button expand="block" fill="clear" color="medium" (click)="alCancelar()">Cancelar</ion-button>
+  } @else {
+    <p class="ayuda">
+      Amazon Rekognition comprobará que frente a la cámara hay una persona real (no una foto ni un video) y luego
+      buscará si su rostro está registrado.
+    </p>
 
-  <app-selector-foto [(foto)]="foto" [deshabilitado]="cargando()"></app-selector-foto>
+    <ion-button expand="block" size="large" class="enviar" (click)="iniciar()" [disabled]="ocupado()">
+      @if (preparando()) {
+        <ion-spinner name="crescent" slot="start"></ion-spinner>
+        Preparando…
+      } @else if (verificando()) {
+        <ion-spinner name="crescent" slot="start"></ion-spinner>
+        Verificando…
+      } @else {
+        <ion-icon slot="start" name="scan-outline" aria-hidden="true"></ion-icon>
+        {{ resultado() || error() ? 'Intentar de nuevo' : 'Iniciar reconocimiento' }}
+      }
+    </ion-button>
 
-  <ion-button expand="block" size="large" class="enviar" (click)="reconocer()" [disabled]="!puedeReconocer()">
-    @if (cargando()) {
-      <ion-spinner name="crescent" slot="start"></ion-spinner>
-      Buscando…
-    } @else {
-      <ion-icon slot="start" name="scan-outline" aria-hidden="true"></ion-icon>
-      Reconocer
+    @if (error()) {
+      <ion-text color="danger">
+        <p class="error">{{ error() }}</p>
+      </ion-text>
     }
-  </ion-button>
 
-  @if (error()) {
-    <ion-text color="danger">
-      <p class="error">{{ error() }}</p>
-    </ion-text>
-  }
-
-  @if (resultado(); as respuesta) {
-    @if (respuesta.match && respuesta.id) {
-      <ion-card color="success" class="resultado">
-        <ion-card-header>
-          <ion-icon name="checkmark-circle" aria-hidden="true"></ion-icon>
-          <ion-card-subtitle>Persona reconocida</ion-card-subtitle>
-          <ion-card-title>{{ nombreLegible(respuesta.id) }}</ion-card-title>
-        </ion-card-header>
-        <ion-card-content>
-          <p>Identificador: <strong>{{ respuesta.id }}</strong></p>
-          <p>Similitud: <strong>{{ respuesta.similarity | number: '1.1-1' }} %</strong></p>
-        </ion-card-content>
-      </ion-card>
-    } @else {
-      <ion-card color="warning" class="resultado">
-        <ion-card-header>
-          <ion-icon name="help-circle" aria-hidden="true"></ion-icon>
-          <ion-card-title>Sin coincidencias</ion-card-title>
-          <ion-card-subtitle>Este rostro no está registrado</ion-card-subtitle>
-        </ion-card-header>
-        <ion-card-content>
-          <p>Regístralo primero en la pestaña Registrar.</p>
-        </ion-card-content>
-      </ion-card>
+    @if (resultado(); as respuesta) {
+      @if (!respuesta.vivo) {
+        <ion-card color="danger" class="resultado">
+          <ion-card-header>
+            <ion-icon name="close-circle" aria-hidden="true"></ion-icon>
+            <ion-card-title>No pasó la prueba de vida</ion-card-title>
+            <ion-card-subtitle>AWS no confirmó que sea una persona real</ion-card-subtitle>
+          </ion-card-header>
+          <ion-card-content>
+            <p>Confianza de vida: <strong>{{ respuesta.confianza | number: '1.1-1' }} %</strong></p>
+            <p>Inténtalo de nuevo con buena luz y siguiendo las indicaciones.</p>
+          </ion-card-content>
+        </ion-card>
+      } @else if (respuesta.match && respuesta.id) {
+        <ion-card color="success" class="resultado">
+          <ion-card-header>
+            <ion-icon name="checkmark-circle" aria-hidden="true"></ion-icon>
+            <ion-card-subtitle>Persona reconocida</ion-card-subtitle>
+            <ion-card-title>{{ nombreLegible(respuesta.id) }}</ion-card-title>
+          </ion-card-header>
+          <ion-card-content>
+            <p>Prueba de vida: <strong>superada ({{ respuesta.confianza | number: '1.1-1' }} %)</strong></p>
+            <p>Identificador: <strong>{{ respuesta.id }}</strong></p>
+            <p>Similitud: <strong>{{ respuesta.similarity | number: '1.1-1' }} %</strong></p>
+          </ion-card-content>
+        </ion-card>
+      } @else {
+        <ion-card color="warning" class="resultado">
+          <ion-card-header>
+            <ion-icon name="help-circle" aria-hidden="true"></ion-icon>
+            <ion-card-title>Sin coincidencias</ion-card-title>
+            <ion-card-subtitle>Este rostro no está registrado</ion-card-subtitle>
+          </ion-card-header>
+          <ion-card-content>
+            <p>Prueba de vida: <strong>superada ({{ respuesta.confianza | number: '1.1-1' }} %)</strong></p>
+            <p>Regístralo primero en la pestaña Registrar.</p>
+          </ion-card-content>
+        </ion-card>
+      }
     }
   }
 </ion-content>

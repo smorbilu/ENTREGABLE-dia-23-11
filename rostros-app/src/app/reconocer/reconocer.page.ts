@@ -1,6 +1,5 @@
-import { Component, computed, effect, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 
-import { FotoCapturada } from '../services/camara.service';
 import {
   ReconocimientoRespuesta,
   RostrosService,
@@ -17,37 +16,56 @@ import {
 export class ReconocerPage {
   private readonly rostros = inject(RostrosService);
 
-  readonly foto = signal<FotoCapturada | null>(null);
-  readonly cargando = signal(false);
+  readonly sesion = signal<string | null>(null);
+  readonly preparando = signal(false);
+  readonly verificando = signal(false);
   readonly resultado = signal<ReconocimientoRespuesta | null>(null);
   readonly error = signal('');
 
-  readonly puedeReconocer = computed(() => !!this.foto() && !this.cargando());
+  readonly ocupado = computed(() => this.preparando() || this.verificando());
 
   readonly nombreLegible = nombreLegible;
 
-  constructor() {
-    effect(() => {
-      this.foto();
-      this.resultado.set(null);
-      this.error.set('');
-    });
+  ionViewWillLeave(): void {
+    this.sesion.set(null);
   }
 
-  async reconocer(): Promise<void> {
-    const foto = this.foto();
-    if (!foto) {
-      return;
-    }
-    this.cargando.set(true);
-    this.error.set('');
+  async iniciar(): Promise<void> {
     this.resultado.set(null);
+    this.error.set('');
+    this.preparando.set(true);
     try {
-      this.resultado.set(await this.rostros.reconocer(foto.base64));
+      const { sessionId } = await this.rostros.crearSesion();
+      this.sesion.set(sessionId);
     } catch (error) {
       this.error.set(mensajeDeError(error));
     } finally {
-      this.cargando.set(false);
+      this.preparando.set(false);
     }
+  }
+
+  async alCompletar(): Promise<void> {
+    const sessionId = this.sesion();
+    this.sesion.set(null);
+    if (!sessionId) {
+      return;
+    }
+    this.verificando.set(true);
+    try {
+      this.resultado.set(await this.rostros.reconocer(sessionId));
+    } catch (error) {
+      this.error.set(mensajeDeError(error));
+    } finally {
+      this.verificando.set(false);
+    }
+  }
+
+  alCancelar(): void {
+    this.sesion.set(null);
+  }
+
+  alFallar(mensaje: string): void {
+    this.sesion.set(null);
+    this.error.set(mensaje);
   }
 }

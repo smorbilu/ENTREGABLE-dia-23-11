@@ -11,7 +11,14 @@ export interface RegistroRespuesta {
   confianza: number;
 }
 
+export interface SesionVida {
+  sessionId: string;
+}
+
 export interface ReconocimientoRespuesta {
+  vivo: boolean;
+  estado: string;
+  confianza: number;
   match: boolean;
   id?: string;
   similarity?: number;
@@ -80,9 +87,13 @@ export class RostrosService {
     );
   }
 
-  reconocer(imagenBase64: string): Promise<ReconocimientoRespuesta> {
+  crearSesion(): Promise<SesionVida> {
+    return firstValueFrom(this.http.post<SesionVida>(`${this.apiUrl}/sesion`, {}));
+  }
+
+  reconocer(sessionId: string): Promise<ReconocimientoRespuesta> {
     return firstValueFrom(
-      this.http.post<ReconocimientoRespuesta>(`${this.apiUrl}/reconocer`, { image: imagenBase64 })
+      this.http.post<ReconocimientoRespuesta>(`${this.apiUrl}/reconocer`, { sessionId })
     );
   }
 
